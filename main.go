@@ -16,7 +16,7 @@ import (
 	"github.com/graphql-go/handler"
 )
 
-// Список поздравлений (индекс 0 соответствует ID 1 и т.д.)
+// Список поздравлений (индекс 0 соответствует birth_day 1 и т.д.)
 var greetings = []string{
 	"С 8 Марта! Пусть каждый день дарит улыбки, радость и вдохновение!",
 	"Поздравляю с Международным женским днём! Желаю весеннего настроения, любви и счастья!",
@@ -53,7 +53,7 @@ var greetings = []string{
 	"С 8 Марта! Пусть каждый день будет наполнен любовью и гармонией!",
 }
 
-// Список цветов для каждого ID (эмодзи)
+// Список цветов для каждого birth_day (эмодзи)
 var flowers = []string{
 	"🌷🌹🌸", "🌼🌻🌺", "🌷🌷🌷", "🌸🌸🌸", "🌹🌹🌹",
 	"🌺🌺🌺", "🌻🌻🌻", "🌼🌼🌼", "🌷🌹🌺", "🌸🌼🌻",
@@ -88,22 +88,22 @@ func main() {
 	greetingField := &graphql.Field{
 		Type: greetingType,
 		Args: graphql.FieldConfigArgument{
-			"id": &graphql.ArgumentConfig{
+			"birth_day": &graphql.ArgumentConfig{
 				Type: graphql.NewNonNull(graphql.Int),
 			},
 		},
 		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-			id, ok := p.Args["id"].(int)
+			birth_day, ok := p.Args["birth_day"].(int)
 			if !ok {
-				return nil, fmt.Errorf("id должен быть целым числом")
+				return nil, fmt.Errorf("birth_day должен быть целым числом")
 			}
-			if id < 1 || id > len(greetings) {
-				return nil, fmt.Errorf("поздравление с ID %d не найдено", id)
+			if birth_day < 1 || birth_day > len(greetings) {
+				return nil, fmt.Errorf("поздравление для birth_day %d не найдено", birth_day)
 			}
 			// Индексация с 0
 			return GreetingResponse{
-				Text:    greetings[id-1],
-				Flowers: flowers[id-1],
+				Text:    greetings[birth_day-1],
+				Flowers: flowers[birth_day-1],
 			}, nil
 		},
 	}
@@ -148,9 +148,9 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	// 6. CLI-взаимодействие
-	fmt.Println("Введите ID поздравления (от 1 до 10) для получения текста и цветов. Для выхода введите 'exit' или нажмите Ctrl+C.")
+	fmt.Println("Введите birth_day (от 1 до 31) для получения текста и цветов. Для выхода введите 'exit' или нажмите Ctrl+C.")
 	for {
-		fmt.Print("ID: ")
+		fmt.Print("birth_day: ")
 		var input string
 		_, err := fmt.Scanln(&input)
 		if err != nil {
@@ -162,15 +162,15 @@ func main() {
 			break
 		}
 
-		var id int
-		_, err = fmt.Sscan(input, &id)
+		var birth_day int
+		_, err = fmt.Sscan(input, &birth_day)
 		if err != nil {
 			fmt.Println("Пожалуйста, введите число от 1 до 10")
 			continue
 		}
 
 		// Формируем GraphQL-запрос (теперь запрашиваем оба поля)
-		query := fmt.Sprintf(`{"query": "query { greeting(id: %d) { text flowers } }"}`, id)
+		query := fmt.Sprintf(`{"query": "query { greeting(birth_day: %d) { text flowers } }"}`, birth_day)
 		body := bytes.NewBufferString(query)
 
 		resp, err := http.Post(fmt.Sprintf("http://localhost:%s/", port), "application/json", body)
