@@ -30,10 +30,43 @@ var greetings = []string{
 	"С 8 Марта! Желаю женского счастья, крепкого здоровья и исполнения желаний!",
 }
 
+// Список цветов для каждого ID (эмодзи)
+var flowers = []string{
+	"🌷🌹🌸",
+	"🌼🌻🌺",
+	"🌷🌷🌷",
+	"🌸🌸🌸",
+	"🌹🌹🌹",
+	"🌺🌺🌺",
+	"🌻🌻🌻",
+	"🌼🌼🌼",
+	"🌷🌹🌺",
+	"🌸🌼🌻",
+}
+
+// Структура, представляющая ответ с поздравлением и цветами
+type GreetingResponse struct {
+	Text    string `json:"text"`
+	Flowers string `json:"flowers"`
+}
+
 func main() {
-	// 1. Создаём схему GraphQL
+	// 1. Определяем объектный тип Greeting
+	greetingType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Greeting",
+		Fields: graphql.Fields{
+			"text": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.String),
+			},
+			"flowers": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.String),
+			},
+		},
+	})
+
+	// 2. Поле greeting в корневом запросе
 	greetingField := &graphql.Field{
-		Type: graphql.String,
+		Type: greetingType,
 		Args: graphql.FieldConfigArgument{
 			"id": &graphql.ArgumentConfig{
 				Type: graphql.NewNonNull(graphql.Int),
@@ -47,8 +80,11 @@ func main() {
 			if id < 1 || id > len(greetings) {
 				return nil, fmt.Errorf("поздравление с ID %d не найдено", id)
 			}
-			// greetings индексируется с 0, поэтому id-1
-			return greetings[id-1], nil
+			// Индексация с 0
+			return GreetingResponse{
+				Text:    greetings[id-1],
+				Flowers: flowers[id-1],
+			}, nil
 		},
 	}
 
@@ -65,34 +101,34 @@ func main() {
 		log.Fatalf("ошибка создания схемы GraphQL: %v", err)
 	}
 
-	// 2. Создаём HTTP-обработчик с включённым GraphiQL
+	// 3. Создаём HTTP-обработчик с включённым GraphiQL
 	graphqlHandler := handler.New(&handler.Config{
 		Schema:   &schema,
 		Pretty:   true,
-		GraphiQL: true, // Включаем интерфейс GraphiQL в браузере
+		GraphiQL: true,
 	})
 
-	// 3. Запускаем сервер в горутине
+	// 4. Определяем порт из окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // порт по умолчанию для локального запуска
+		port = "8080"
 	}
-	server := &http.Server{Addr: ":" + port, Handler: graphqlHandler}
 
+	server := &http.Server{Addr: ":" + port, Handler: graphqlHandler}
 	go func() {
-		log.Println("GraphQL сервер запущен на http://localhost:8080")
-		log.Println("GraphiQL интерфейс доступен по адресу http://localhost:8080")
+		log.Printf("GraphQL сервер запущен на http://localhost:%s", port)
+		log.Printf("GraphiQL интерфейс доступен по адресу http://localhost:%s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("ошибка запуска сервера: %v", err)
 		}
 	}()
 
-	// 4. Ожидание сигнала завершения для graceful shutdown
+	// 5. Ожидание сигнала завершения
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// 5. CLI-взаимодействие: ввод ID и вывод поздравления
-	fmt.Println("Введите ID поздравления (от 1 до 10) для получения текста. Для выхода введите 'exit' или нажмите Ctrl+C.")
+	// 6. CLI-взаимодействие
+	fmt.Println("Введите ID поздравления (от 1 до 10) для получения текста и цветов. Для выхода введите 'exit' или нажмите Ctrl+C.")
 	for {
 		fmt.Print("ID: ")
 		var input string
@@ -113,11 +149,11 @@ func main() {
 			continue
 		}
 
-		// Формируем GraphQL-запрос
-		query := fmt.Sprintf(`{"query": "query { greeting(id: %d) }"}`, id)
+		// Формируем GraphQL-запрос (теперь запрашиваем оба поля)
+		query := fmt.Sprintf(`{"query": "query { greeting(id: %d) { text flowers } }"}`, id)
 		body := bytes.NewBufferString(query)
 
-		resp, err := http.Post("http://localhost:8080/", "application/json", body)
+		resp, err := http.Post(fmt.Sprintf("http://localhost:%s/", port), "application/json", body)
 		if err != nil {
 			log.Printf("Ошибка при отправке запроса: %v", err)
 			continue
@@ -126,7 +162,10 @@ func main() {
 
 		var result struct {
 			Data struct {
-				Greeting string `json:"greeting"`
+				Greeting struct {
+					Text    string `json:"text"`
+					Flowers string `json:"flowers"`
+				} `json:"greeting"`
 			} `json:"data"`
 			Errors []struct {
 				Message string `json:"message"`
@@ -140,11 +179,12 @@ func main() {
 		if len(result.Errors) > 0 {
 			fmt.Printf("Ошибка от сервера: %s\n", result.Errors[0].Message)
 		} else {
-			fmt.Printf("Поздравление: %s\n\n", result.Data.Greeting)
+			fmt.Printf("Поздравление: %s\n", result.Data.Greeting.Text)
+			fmt.Printf("Цветы: %s\n\n", result.Data.Greeting.Flowers)
 		}
 	}
 
-	// 6. Graceful shutdown сервера
+	// 7. Graceful shutdown
 	fmt.Println("Останавливаем сервер...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
